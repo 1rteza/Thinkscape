@@ -46,12 +46,20 @@ function parse(t) {
   const s = t.trimStart();
   const looksHtml = /^(```(?:html)?\s*)?(<!doctype|<html)/i.test(s); // fallback: model skipped the tags
   const build = s.startsWith("<plan>") || s.startsWith("<site>") || looksHtml;
-  if (!build) return { mode: s.length < 6 && ("<plan>".startsWith(s) || "<site>".startsWith(s)) ? "undecided" : "chat" };
   const grab = (tag) => {
     const i = t.indexOf(`<${tag}>`); if (i < 0) return null;
     const a = i + tag.length + 2, j = t.indexOf(`</${tag}>`, a);
     return { text: j < 0 ? t.slice(a) : t.slice(a, j), done: j >= 0 };
   };
+  if (!build) {
+    if (s.length < 10 && ["<plan>", "<site>", "<thoughts>"].some((x) => x.startsWith(s))) return { mode: "undecided" };
+    // Normal question: <thoughts> steps, then <answer>. Falls back to plain text if the model skips the tags.
+    const th = grab("thoughts"), an = grab("answer");
+    const thoughts = th ? th.text.split("\n").slice(0, th.done ? undefined : -1)
+      .map((l) => l.replace(/^\s*[-*\d.)]+\s*/, "").trim()).filter(Boolean).slice(0, 6) : [];
+    const body = an ? an.text : th ? "" : t;
+    return { mode: "chat", thoughts, answer: body.replace(/<\/?[a-z]*$/i, "").trim() };
+  }
   const plan = grab("plan"), site = grab("site"), sum = grab("summary");
   let html = site ? site.text : looksHtml ? s : "";
   html = html.replace(/^\s*```(?:html)?\s*/i, "").replace(/```\s*$/, "");
@@ -85,15 +93,24 @@ const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, 
 const highlight = (s) => esc(s).replace(/(&lt;!--[\s\S]*?(?:--&gt;|$))|(&lt;\/?[\w!-]+)|("[^"\n]*")/g,
   (m, c, t) => `<i class="${c ? "c" : t ? "t" : "s"}">${m}</i>`);
 
+// Thought map: one list item per step, earlier steps tick off as new ones arrive
+function syncMap(ol, labels, cur) {
+  for (let i = ol.children.length; i < labels.length; i++) {
+    const li = el("li", "", labels[i]); if (i === 0 && labels[0].startsWith("You asked")) li.dataset.q = 1; ol.append(li);
+  }
+  [...ol.children].forEach((li, i) => (li.className = i < cur ? "done" : i === cur ? "active" : ""));
+}
+
 /* ---------- One run = one streamed response (live or replayed) ---------- */
-function makeRun(bubble, record = true) {
-  const ui = { phase: $("#phase"), time: $("#time"), chars: $("#chars"), steps: $("#steps"), code: $("#code"), frame: $("#frame"), wrap: $("#wrap"), actions: $("#actions") };
-  let raw = "", mode = "undecided", p = {}, t0 = 0, timer = 0, n = 0, dirty = false, pv = "";
+function makeRun(bubble, record = true, question = "") {
+  const ui = { phase: $("#phase"), time: $("#time"), chars: $("#chars"), steps: $("#steps"), code: $("#code"), frame: $("#frame"), wrap: $("#wrap"), actions: $("#actions"), tmap: $("#think .tmap") };
+  let raw = "", mode = "undecided", p = {}, t0 = 0, timer = 0, n = 0, dirty = false, pv = "", tchain, ans;
 
   function paint(final) {
     ui.time.textContent = ((Date.now() - t0) / 1000).toFixed(1) + "s";
     if (!dirty && !final) return;
     dirty = false;
+    if (mode === "chat") return paintChat(final);
     const html = p.html || "", len = html.length, done = final || p.siteDone;
     ui.chars.textContent = len.toLocaleString() + " chars";
     ui.phase.textContent = final ? "Done" : p.siteDone ? "Finishing" : len ? "Writing code" : "Planning";
@@ -108,9 +125,26 @@ function makeRun(bubble, record = true) {
       if (doc !== pv) { pv = doc; ui.frame.srcdoc = doc; }
     }
   }
+  function paintChat(final) {
+    const th = p.thoughts || [], q = question.length > 70 ? question.slice(0, 70) + "…" : question;
+    const labels = [...(q ? ["You asked: " + q] : []), ...th];
+    if (p.answer) labels.push("Writing the answer");
+    const cur = final ? labels.length : labels.length - 1;
+    syncMap(ui.tmap, labels, cur); syncMap(tchain, labels, cur);
+    tchain.hidden = !th.length; // model skipped the thoughts: show just the answer
+    ans.textContent = p.answer || "";
+    ui.chars.textContent = (p.answer || "").length.toLocaleString() + " chars";
+    ui.phase.textContent = final ? "Done" : p.answer ? "Answering" : "Thinking";
+    scrollLog();
+  }
+  function startChat() {
+    t0 = Date.now(); ui.actions.hidden = true; ui.tmap.replaceChildren(); document.body.dataset.view = "think";
+    bubble.classList.remove("thinking"); tchain = el("ol", "tmap tchain"); ans = el("div", "ans"); bubble.replaceChildren(tchain, ans);
+    timer = setInterval(() => paint(false), 100);
+  }
   function startBuild() {
     t0 = Date.now(); ui.actions.hidden = true; ui.steps.replaceChildren(); ui.code.textContent = ""; ui.frame.srcdoc = "";
-    ui.wrap.classList.add("live");
+    ui.wrap.classList.add("live"); document.body.dataset.view = "build";
     if (matchMedia("(max-width:860px)").matches) setTab("build");
     bubble.classList.remove("thinking"); bubble.textContent = "Building your site…";
     timer = setInterval(() => paint(false), 100);
@@ -119,8 +153,7 @@ function makeRun(bubble, record = true) {
     get raw() { return raw; },
     feed(d) {
       raw += d; p = parse(raw);
-      if (mode === "undecided" && p.mode !== "undecided") { mode = p.mode; mode === "build" ? startBuild() : bubble.classList.remove("thinking"); }
-      if (mode === "chat") { bubble.textContent = raw; scrollLog(); }
+      if (mode === "undecided" && p.mode !== "undecided") { mode = p.mode; mode === "build" ? startBuild() : startChat(); }
       dirty = true;
     },
     end(err) {
@@ -132,8 +165,10 @@ function makeRun(bubble, record = true) {
         bubble.textContent = sum;
         if (p.html) { state.view = p.html; ui.actions.hidden = false; if (record) state.last = raw; }
         if (record) state.messages.push({ role: "assistant", content: "[Built a website] " + sum }); // keep history small (10 KB cap)
-      } else if (mode === "chat" && record) state.messages.push({ role: "assistant", content: raw });
-      else bubble.classList.remove("thinking");
+      } else if (mode === "chat") {
+        dirty = true; paint(true);
+        if (record) state.messages.push({ role: "assistant", content: (p.answer || raw).trim() }); // store the answer only, not the tags
+      } else bubble.classList.remove("thinking");
     },
   };
 }
@@ -168,7 +203,7 @@ async function send(text) {
   addMsg("user", text); state.messages.push({ role: "user", content: text });
   const bubble = addMsg("ai"); bubble.classList.add("thinking"); bubble.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
   setBusy(true); state.ctrl = new AbortController();
-  const run = makeRun(bubble); let pc;
+  const run = makeRun(bubble, true, text); let pc;
   try {
     const res = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ messages: state.messages.slice(-8) }), signal: state.ctrl.signal });
