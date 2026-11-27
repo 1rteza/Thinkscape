@@ -51,7 +51,8 @@ export default async (req, context) => {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
       body: JSON.stringify({
-        model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+        model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+        reasoning_effort: "low",
         stream: true, max_tokens: 6000,
         messages: [{ role: "system", content: SYSTEM }, ...messages],
       }),
