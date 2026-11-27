@@ -19,8 +19,14 @@ Design rules for the site. It must look like a premium agency-made page, never a
 - No external images. Build visuals from CSS gradients, shapes, emoji and inline SVG.
 - Add small JS: smooth scrolling, scroll-reveal with IntersectionObserver, and one interactive touch (tabs, toggle or counter).
 - Keep CSS compact with shared classes so the whole file stays under about 14000 characters.
-2. For anything else, answer normally in plain text with no tags, concisely.
-3. Never put anything outside the tags in build mode. No markdown code fences.`;
+2. For anything else, respond in EXACTLY this format:
+<thoughts>
+- 3 to 5 steps, max 8 words each, showing how you approach the question (what it asks, key considerations, plan for the answer)
+</thoughts>
+<answer>
+the concise answer in plain text
+</answer>
+3. Never put anything outside the tags. No markdown code fences.`;
 
 const json = (o, status = 200, h = {}) =>
   new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json", ...h } });
