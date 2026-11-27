@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thinkscape</title><link rel="stylesheet" href="style.css"></head>
+<body data-tab="chat">
+<nav class="tabs"><button data-t="chat" class="on">Chat</button><button data-t="build">Build</button></nav>
+<main>
+<section id="chat" class="panel">
+  <header><b>Thinkscape</b><span>watch the AI think</span></header>
+  <div id="log" role="log" aria-live="polite"><div id="empty"><h1>What should we build?</h1><div id="chips"></div></div></div>
+  <form id="form"><textarea id="input" rows="1" placeholder="Ask anything, or describe a website…" aria-label="Message"></textarea>
+    <button id="send" aria-label="Send">➤</button><button id="stop" type="button" aria-label="Stop" hidden>■</button></form>
+</section>
+<section id="build" class="panel">
+  <div id="status"><span id="phase">Idle</span><span id="time">0.0s</span><span id="chars">0 chars</span></div>
+  <ol id="steps"></ol>
+  <div id="actions" hidden><button id="replay">↻ Replay build</button><button id="full">Open full screen</button><button id="copy">Copy code</button><button id="dl">Download .html</button><button id="tog">Mobile width</button></div>
+  <div class="views"><pre id="code" aria-label="Streaming code"></pre>
+    <div id="wrap"><iframe id="frame" sandbox="allow-scripts" title="Live preview"></iframe><i class="scan"></i></div></div>
+</section>
+</main>
+<script type="module" src="app.js"></script>
+</body></html>
