@@ -2,7 +2,7 @@
 const $ = (s) => document.querySelector(s), sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
 const DEFAULT_PLAN = ["Layout skeleton", "Color and typography", "Content sections", "Interactions"]; // used when the model skips <plan>
-const EXPECTED = 9000; // typical site length (chars), used to estimate progress
+const EXPECTED = 12000; // typical site length (chars), used to estimate progress
 const PROMPTS = ["A landing page for a coffee shop", "A portfolio for a photographer", "A pricing page for a SaaS app"];
 // Tiny built-in build so visitors can see the effect after the free quota runs out
 const SAMPLE = `<plan>
@@ -138,6 +138,18 @@ function makeRun(bubble, record = true) {
   };
 }
 
+/* ---------- Pacer: Groq streams very fast, so release text at a watchable speed ---------- */
+function pacer(run) {
+  let q = "", wait = null;
+  const id = setInterval(() => {
+    if (state.ctrl?.signal.aborted) q = "";
+    if (!q) { wait?.(); wait = null; return; }
+    const n = Math.max(15, Math.ceil(q.length / 600)); // about 500+ chars/sec, speeds up if far behind
+    run.feed(q.slice(0, n)); q = q.slice(n);
+  }, 30);
+  return { push: (t) => (q += t), drain: () => new Promise((r) => (q ? (wait = r) : r())), stop: () => clearInterval(id) };
+}
+
 /* ---------- UI ---------- */
 const log = $("#log"), input = $("#input");
 const scrollLog = () => (log.scrollTop = log.scrollHeight);
@@ -156,16 +168,15 @@ async function send(text) {
   addMsg("user", text); state.messages.push({ role: "user", content: text });
   const bubble = addMsg("ai"); bubble.classList.add("thinking"); bubble.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
   setBusy(true); state.ctrl = new AbortController();
-  const run = makeRun(bubble);
+  const run = makeRun(bubble); let pc;
   try {
     const res = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ messages: state.messages.slice(-8) }), signal: state.ctrl.signal });
     if (!res.ok) { const j = await res.json().catch(() => ({})); throw Object.assign(new Error(j.error || `Error ${res.status}`), { limit: res.status === 429 }); }
-    await readSSE(res.body, run.feed);
-    run.end();
+    pc = pacer(run); await readSSE(res.body, pc.push); await pc.drain(); pc.stop(); run.end();
   } catch (e) {
     const aborted = e.name === "AbortError";
-    run.end(e);
+    pc?.stop(); run.end(e);
     if (!run.raw) { state.messages.pop(); aborted ? bubble.remove() : showErr(bubble, e); }
     else if (!aborted) bubble.append(el("div", "note", "⚠ " + errText(e)));
   } finally { setBusy(false); }
