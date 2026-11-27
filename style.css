@@ -47,3 +47,19 @@ iframe{display:block;width:100%;height:100%;border:0;background:#fff;margin:0 au
  body[data-tab=chat] #build,body[data-tab=build] #chat{display:none}
  .views{grid-template-columns:1fr;grid-template-rows:1fr 1fr}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+[hidden]{display:none!important}
+.tmap{list-style:none;margin:0;padding:6px 4px 0 6px}
+.tmap li{position:relative;padding:0 0 14px 26px;color:var(--m);font-size:14px;animation:in .4s}
+.tmap li::before{content:"";position:absolute;left:0;top:4px;width:12px;height:12px;border-radius:50%;border:2px solid var(--b);background:var(--bg)}
+.tmap li::after{content:"";position:absolute;left:5px;top:18px;bottom:-2px;width:2px;background:var(--b)}
+.tmap li:last-child::after{display:none}
+.tmap li[data-q]{font-style:italic}
+.tmap .active,.tmap .done{color:var(--t)}
+.tmap .active::before{border-color:var(--a);box-shadow:0 0 12px var(--a);animation:pulse 1.2s infinite}
+.tmap .done::before{background:var(--a);border-color:var(--a)}.tmap .done::after{background:var(--a)}
+#think{display:none;flex:1;overflow:auto;padding:14px 16px}#think .cap{margin:0 0 12px;color:var(--m);font-size:13px}
+body[data-view=think] #think{display:block}
+body[data-view=think] .views,body[data-view=think] #steps,body[data-view=think] #actions{display:none}
+.ans{white-space:pre-wrap}.tchain{display:none;padding:0 0 4px;margin-bottom:6px;border-bottom:1px solid var(--b)}
+@media (max-width:860px){.tchain{display:block}}
